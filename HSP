@@ -1,0 +1,187 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+df = pd.read_csv('HSP.csv')
+
+df = df.fillna(value=df[["PDW","AST","ALB","APO","HCY","LA",]].mean())
+
+df = df.fillna(value=df[["ALT","TC","Lp","CRP","LDH","LDHD","CK","CKMB"]].median())
+
+def Zscore(x):
+    z=(x-np.mean(x))/np.std(x)
+    return z
+df.Age=Zscore(df.Age)
+df.WBC=Zscore(df.WBC)
+df.GR=Zscore(df.GR)
+df.LY=Zscore(df.LY)
+df.Hb=Zscore(df.Hb)
+df.MCV=Zscore(df.MCV)
+df.MCH=Zscore(df.MCH)
+df.MCHC=Zscore(df.MCHC)
+df.PLT=Zscore(df.PLT)
+df.MPV=Zscore(df.MPV)
+df.PCT=Zscore(df.PCT)
+df.PDW=Zscore(df.PDW)
+df.AST=Zscore(df.AST)
+df.ALT=Zscore(df.ALT)
+df.ALB=Zscore(df.ALB)
+df.TC=Zscore(df.TC)
+df.APO=Zscore(df.APO)
+df.Lp=Zscore(df.Lp)
+df.CRP=Zscore(df.CRP)
+df.HCY=Zscore(df.HCY)
+df.LA=Zscore(df.LA)
+df.LDH=Zscore(df.LDH)
+df.LDHD=Zscore(df.LDHD)
+df.CK=Zscore(df.CK)
+df.CKMB=Zscore(df.CKMB)
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense 
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.layers import Dropout
+from tensorflow.keras import regularizers
+from tensorflow.keras import optimizers
+df.Sex=df.Sex.astype('category')
+df.GJ=df.GJ.astype('category')
+df.SZ=df.SZ.astype('category')
+df = pd.get_dummies(df,drop_first=True)
+cols_to_move = ['target']
+remaining_cols = [col for col in df.columns if col not in cols_to_move]
+df = df[remaining_cols + cols_to_move]
+dataset = df.values
+np.random.shuffle(dataset)
+X = dataset[:,0:28].astype(float)
+Y = to_categorical(dataset[:,28])
+
+from sklearn.model_selection import train_test_split
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=41)
+
+model = Sequential()
+model.add(Dense(60,input_shape=(28,),activation='relu',
+                kernel_regularizer=regularizers.l1(0.0001),
+                bias_regularizer=regularizers.l1(0.0001)))
+model.add(Dropout(0.40))
+model.add(Dense(30,activation="relu",
+                kernel_regularizer=regularizers.l1(0.0001),
+                bias_regularizer=regularizers.l1(0.0001)))
+model.add(Dropout(0.40))
+model.add(Dense(15,activation="relu",
+                kernel_regularizer=regularizers.l1(0.0001),
+                bias_regularizer=regularizers.l1(0.0001)))
+model.add(Dropout(0.40))
+model.add(Dense(3,activation="softmax"))
+METRICS = [ 
+      keras.metrics.BinaryAccuracy(name='accuracy'),
+      keras.metrics.Precision(name='precision'),
+      keras.metrics.Recall(name='recall'),
+      keras.metrics.AUC(name='auc'),
+]
+
+opt_adam = optimizers.Adam(learning_rate=0.001,decay=1e-4)
+model.compile(loss='binary_crossentropy',optimizer=opt_adam,metrics=METRICS)
+history = model.fit(X_train,Y_train,validation_data=(X_test,Y_test),epochs=30,batch_size=2,verbose=1)
+loss,accuracy,precision,recall,auc = model.evaluate(X_train,Y_train)
+print('A1 = {:.2f}'.format(accuracy))
+print('A2 = {:.2f}'.format(precision))
+print('A3 = {:.2f}'.format(recall))
+print('A4 = {:.2f}'.format(auc))
+loss,accuracy,precision,recall,auc = model.evaluate(X_test,Y_test)
+print('B1 = {:.2f}'.format(accuracy))
+print('B2 = {:.2f}'.format(precision))
+print('B3 = {:.2f}'.format(recall))
+print('B4 = {:.2f}'.format(auc))
+fig,loss_ax = plt.subplots()
+acc_ax = loss_ax.twinx()
+loss_ax.plot(history.history['loss'],'y',label='train loss')
+loss_ax.plot(history.history['val_loss'],'r',label='val loss')
+acc_ax.plot(history.history['accuracy'],'b',label='train acc')
+acc_ax.plot(history.history['val_accuracy'],'g',label='val acc')
+loss_ax.set_xlabel('epoch')
+loss_ax.set_ylabel('loss')
+acc_ax.set_ylabel('accuracy')
+loss_ax.legend(loc='upper left')
+acc_ax.legend(loc='lower left')
+plt.show()
+
+Y_probs=model.predict(X_test)
+Y_pred_5=np.argmax(Y_probs,axis=1)
+Y_test_5=np.argmax(Y_test,axis=1)
+from sklearn.metrics import cohen_kappa_score
+kappa_5 = cohen_kappa_score(Y_test_5,Y_pred_5)#label=None
+print(kappa_5)
+print('C1 = {:.2f}'.format(accuracy))
+print('C2 = {:.2f}'.format(accuracy))
+print('Kappa：',kappa_5)
+
+true = np.sum(Y_pred_5 == Y_test_5 )
+print('：', true)
+print('：', Y_test.shape[0]-true)
+
+plt.figure(figsize=(10, 8))
+sns.heatmap(conf_mx_5, annot=True, cmap='Blues')
+plt.xlabel('MLP')
+plt.show()
+from itertools import cycle
+from sklearn.metrics import roc_curve, auc
+
+lw = 2
+n_classes = 3
+
+fpr = dict()
+tpr = dict()
+roc_auc = dict()
+for i in range(n_classes):
+    fpr[i], tpr[i], _ = roc_curve(Y_test[:, i], Y_probs[:, i])
+    roc_auc[i] = auc(fpr[i], tpr[i])
+
+fpr["micro"], tpr["micro"], _ = roc_curve(Y_test.ravel(), Y_probs.ravel())
+roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
+
+all_fpr = np.unique(np.concatenate([fpr[i] for i in range(n_classes)]))
+
+mean_tpr = np.zeros_like(all_fpr)
+for i in range(n_classes):
+    mean_tpr += np.interp(all_fpr, fpr[i], tpr[i])
+
+mean_tpr /= n_classes
+
+fpr["macro"] = all_fpr
+tpr["macro"] = mean_tpr
+roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
+
+plt.figure(1)
+plt.plot(fpr["micro"], tpr["micro"],
+         label='micro-average ROC curve (area = {0:0.2f})'
+               ''.format(roc_auc["micro"]),
+         color='deeppink', linestyle=':', linewidth=4)
+
+plt.plot(fpr["macro"], tpr["macro"],
+         label='macro-average ROC curve (area = {0:0.2f})'
+               ''.format(roc_auc["macro"]),
+         color='navy', linestyle=':', linewidth=4)
+
+colors = cycle(['aqua', 'darkorange', 'cornflowerblue'])
+for i, color in zip(range(n_classes), colors):
+    plt.plot(fpr[i], tpr[i], color=color, lw=lw,
+             label='MLP of ROC (class {0}, AUC = {1:0.2f})'.format(i, roc_auc[i]))
+
+plt.plot([0, 1], [0, 1], 'k--', lw=lw)
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Characteristic to multi-class')
+plt.legend(loc="lower right")
+plt.show()
+import shap
+shap.initjs()
+explainer = shap.Explainer(model)
+explainer = shap.DeepExplainer(model,X_train)
+shap_values = explainer.shap_values(X_test)
+
+shap.summary_plot(shap_values[2], X_test, feature_names=features,max_display=15,plot_type='dot')
+# SHAP 纵向交叉比较
+shap.dependence_plot('LA', shap_values[2], X_test,feature_names=features,interaction_index='LA')
